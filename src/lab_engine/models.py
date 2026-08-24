@@ -27,6 +27,7 @@ class Hypothesis:
     expected_evidence: str = ""
     falsifying_evidence: str = ""
     investigation_method: str = ""
+    conclusion_correct: Optional[bool] = None
 
 
 @dataclass
@@ -62,6 +63,7 @@ class IncidentScenario:
     expected_hypotheses: List[str] = field(default_factory=list)
     remediation: str = ""
     failure_chain: str = ""
+    fault_keywords: List[str] = field(default_factory=list)
 
 
 @dataclass

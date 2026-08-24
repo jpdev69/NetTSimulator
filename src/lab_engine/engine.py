@@ -11,6 +11,23 @@ from lab_engine.models import (
 )
 
 
+# Investigation-query keywords mapped to evidence categories. Rows are
+# evaluated in order, so more specific protocols are matched before generic
+# ones (e.g. "Filter DNS packets" resolves to "dns", not "general").
+QUERY_CATEGORY_KEYWORDS = [
+    (("dns", "nslookup", "resolve", "hostname", "name resolution"), "dns"),
+    (("ping", "icmp", "echo request", "echo reply", "reachable"), "icmp"),
+    (("tls", "ssl", "certificate", "clienthello", "https"), "tls"),
+    (("http", "application", "app", "browser", "web", "url"), "application"),
+    (("firewall", "acl", "rule", "security policy", "session table", "nat"), "firewall"),
+    (("arp", "mac", "ethernet", "layer 2", "l2", "switch", "vlan", "duplex", "qos"), "l2"),
+    (("window", "throughput", "retransmission", "slow", "latency", "performance", "duplicate ack", "zero window", "speed"), "performance"),
+    (("tcp", "syn", "handshake", "stream", "port", "connection", "flags", "ack", "reset", "rst"), "tcp"),
+    (("udp",), "udp"),
+    (("log", "syslog", "event", "netstat"), "logs"),
+]
+
+
 class LabEngine:
     """Main lab engine for managing investigations."""
 
@@ -144,10 +161,11 @@ class LabEngine:
 
         # Check if conclusion is correct
         is_correct = self._check_conclusion_correctness(hyp, conclusion)
+        hyp.conclusion_correct = is_correct
 
         return {
             "hypothesis_id": hypothesis_id,
-            "recorded_status": hyp.status,
+            "recorded_status": hyp.status.value,
             "is_correct": is_correct,
             "feedback": self._generate_conclusion_feedback(hyp, is_correct),
         }
@@ -208,8 +226,15 @@ class LabEngine:
         return {
             "score": score,
             "feedback": self._generate_rca_feedback(score),
+            "is_correct": score.root_cause == 20,
             "official_root_cause": self.ground_truth["root_cause"],
             "official_fault_domain": self.ground_truth["fault_domain"],
+            "official_remediation": self.ground_truth["remediation"],
+            "official_failure_chain": self.session.scenario.failure_chain,
+            "official_evidence": "\n".join(
+                f"* [{e.category}] {e.description.splitlines()[0]}"
+                for e in self.session.scenario.evidence_list
+            ),
         }
 
     def get_hint(self, level: int) -> str:
@@ -238,43 +263,45 @@ class LabEngine:
                 return hyp
         return None
 
+    def _map_query_to_category(self, query: str) -> str:
+        """Map an investigation query to an evidence category."""
+        query_lower = query.lower()
+        for keywords, category in QUERY_CATEGORY_KEYWORDS:
+            if any(keyword in query_lower for keyword in keywords):
+                return category
+        return "general"
+
     def _generate_evidence(self, hyp: Hypothesis, query: str) -> Evidence:
         """Generate realistic evidence based on investigation query.
 
-        This creates evidence consistent with the root cause.
+        Evidence is selected by the learner's query and is always drawn
+        from the scenario's ground truth, so every observation stays
+        internally consistent with the underlying root cause.
         """
-        # Simplified evidence generation - in production, this would be more sophisticated
-        evidence_map = {
-            "DNS": {
-                "description": f"DNS Query: {self.session.scenario.servers[0]['name']}\nResponse: {self.session.scenario.servers[0]['ip']}\nResponse code: NOERROR",
-                "category": "dns",
-            },
-            "TCP": {
-                "description": "TCP SYN sent\nWaiting for SYN-ACK...\n[Timeout - no response]",
-                "category": "tcp",
-            },
-            "ICMP": {
-                "description": f"Ping to {self.session.scenario.servers[0]['ip']}\nReply: 64 bytes from {self.session.scenario.servers[0]['ip']}: time=5ms",
-                "category": "icmp",
-            },
-            "Firewall": {
-                "description": f"Connection attempt to {self.session.scenario.servers[0]['ip']}:443\nStatus: Connection refused or timeout",
-                "category": "firewall",
-            },
-        }
+        category = self._map_query_to_category(query)
 
-        # Default evidence
-        evidence_type = next(
-            (p for p in self.session.scenario.protocols if p in evidence_map),
-            "TCP",
+        match = next(
+            (e for e in self.session.scenario.evidence_list if e.category == category),
+            None,
         )
-        evidence_data = evidence_map.get(evidence_type, evidence_map["TCP"])
+        if match is not None:
+            description = match.description
+            technical_details = dict(match.technical_details)
+        else:
+            # Baseline fallback: nothing anomalous in this area, which is
+            # itself consistent with the hidden root cause.
+            description = (
+                f"No anomalies found while checking '{query}'. "
+                "Observed behavior in this area matches the healthy baseline."
+            )
+            technical_details = {}
 
         return Evidence(
             id=f"inv-{len(self.session.gathered_evidence)}",
             timestamp=datetime.now(),
-            category=evidence_data["category"],
-            description=evidence_data["description"],
+            category=category,
+            description=description,
+            technical_details=technical_details,
             relevant_to=[hyp.id],
         )
 
@@ -282,10 +309,23 @@ class LabEngine:
         """Analyze evidence in context of hypothesis."""
         return f"Evidence collected for '{hyp.hypothesis}': {evidence.description}"
 
+    def _hypothesis_matches_root_cause(self, hyp: Hypothesis) -> bool:
+        """Check whether a hypothesis points at the true fault."""
+        text = hyp.hypothesis.lower()
+        return any(k in text for k in self.session.scenario.fault_keywords)
+
     def _check_conclusion_correctness(self, hyp: Hypothesis, conclusion: str) -> bool:
-        """Check if learner's conclusion about hypothesis is correct."""
-        # Simplified check - in production, would be more sophisticated
-        return True
+        """Check if learner's conclusion about hypothesis is correct.
+
+        CONFIRM is correct only when the hypothesis actually points at the
+        root cause; REJECT is correct only when it does not.
+        """
+        matches_root_cause = self._hypothesis_matches_root_cause(hyp)
+        if conclusion == "CONFIRM":
+            return matches_root_cause
+        if conclusion == "REJECT":
+            return not matches_root_cause
+        return False
 
     def _generate_conclusion_feedback(self, hyp: Hypothesis, is_correct: bool) -> str:
         """Generate feedback on hypothesis conclusion."""
@@ -315,8 +355,16 @@ class LabEngine:
         # Prioritization
         score.prioritization = 15 if len(self.session.investigation_history) > 2 else 10
 
-        # Evidence interpretation
-        score.evidence_interpretation = 20 if evidence else 10
+        # Evidence interpretation: base points for citing evidence, plus
+        # credit for hypotheses concluded correctly (CONFIRM/REJECT).
+        concluded = [
+            h for h in self.session.hypotheses if h.conclusion_correct is not None
+        ]
+        correct = [h for h in concluded if h.conclusion_correct]
+        interpretation = 5 if evidence else 0
+        if concluded:
+            interpretation += round(20 * len(correct) / len(concluded))
+        score.evidence_interpretation = min(25, interpretation)
 
         # Root cause
         if root_cause.lower() in self.ground_truth["root_cause"].lower():

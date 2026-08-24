@@ -7,6 +7,8 @@ from rich.markdown import Markdown
 from rich.prompt import Prompt, Confirm
 from rich.text import Text
 
+MIN_HYPOTHESES = 2
+
 
 class TerminalUI:
     """Rich terminal UI for lab simulator."""
@@ -15,10 +17,34 @@ class TerminalUI:
         """Initialize the terminal UI."""
         self.console = Console()
 
+    def prompt_for_lab_command(self) -> bool:
+        """Prompt for the lab start command.
+
+        Returns:
+            True only when the learner types START LAB
+        """
+        command = Prompt.ask(
+            "Type [bold]START LAB[/bold] to begin the investigation"
+        )
+        return command.strip().upper() == "START LAB"
+
+    def prompt_for_difficulty(self) -> Optional[str]:
+        """Prompt for the desired difficulty level.
+
+        Returns:
+            Difficulty string, or None for a random scenario
+        """
+        difficulty = Prompt.ask(
+            "Select difficulty",
+            choices=["beginner", "intermediate", "advanced", "random"],
+            default="random",
+        )
+        return None if difficulty == "random" else difficulty
+
     def display_welcome(self) -> None:
         """Display welcome screen."""
         title = Text(
-            "🔍 Network Troubleshooting Lab Simulator",
+            "Network Troubleshooting Lab Simulator",
             style="bold cyan",
             justify="center",
         )
@@ -81,6 +107,9 @@ class TerminalUI:
     def prompt_for_hypotheses(self) -> List[str]:
         """Prompt user to enter hypotheses.
 
+        The lab requires multiple hypotheses: a single-cause guess is
+        not a differential diagnosis.
+
         Returns:
             List of hypothesis strings
         """
@@ -89,19 +118,23 @@ class TerminalUI:
         )
         self.console.print(
             "Based on the scenario and initial evidence, what are the possible causes?\n"
+            f"Provide at least {MIN_HYPOTHESES} hypotheses.\n"
         )
 
         hypotheses = []
-        count = 1
         while True:
-            hyp = Prompt.ask(f"Hypothesis {count} (or [bold]DONE[/bold] to finish)")
+            hyp = Prompt.ask(
+                f"Hypothesis {len(hypotheses) + 1} (or [bold]DONE[/bold] to finish)"
+            )
             if hyp.upper() == "DONE":
-                if hypotheses:
+                if len(hypotheses) >= MIN_HYPOTHESES:
                     break
-                self.console.print("[red]Please enter at least one hypothesis.[/red]")
+                self.console.print(
+                    f"[red]Enter at least {MIN_HYPOTHESES} hypotheses "
+                    f"({len(hypotheses)} so far).[/red]"
+                )
             else:
                 hypotheses.append(hyp)
-                count += 1
 
         return hypotheses
 
@@ -261,6 +294,10 @@ class TerminalUI:
 
     def display_official_rca(self, rca: dict) -> None:
         """Display official Root Cause Analysis."""
+        failure_chain = rca.get("failure_chain", "")
+        failure_chain_section = (
+            f"\n**Failure Chain:**\n```\n{failure_chain}\n```\n" if failure_chain else ""
+        )
         rca_text = f"""
 ## Root Cause Summary
 
@@ -270,7 +307,7 @@ class TerminalUI:
 
 **Evidence:**
 {rca.get('evidence', 'N/A')}
-
+{failure_chain_section}
 **Remediation:**
 {rca.get('remediation', 'N/A')}
 """

@@ -65,25 +65,42 @@ SCENARIO_TEMPLATES = [
         "root_cause": "The actual cause",
         "fault_domain": "Layer/Component",
         "protocols": ["PROTOCOL1", "PROTOCOL2"],
+        "port_options": [443],            # one is picked at random per lab
+        "protocols_map": {443: [...]},    # optional per-port protocol variants
+        "topology_options": ["...", "..."],  # one is picked at random per lab
+        "fault_keywords": ["..."],        # words that mark a hypothesis as the true fault
+        "remediation": "...",
+        "failure_chain": "...",
+        "evidence": {"dns": "...", "tcp": "...", ...},  # per-category ground truth
     },
 ]
 ```
 
+Host identities (client/server names and IPs, DNS resolver, firewall IP) and the
+incident time are randomized per lab. Use placeholders (`{client_ip}`, `{server_ip}`,
+`{server_name}`, `{dns_server}`, `{firewall_ip}`, `{app_port}`) in `root_cause`,
+`remediation`, `failure_chain`, `fault_keywords` and `evidence` strings so they stay
+consistent with the generated identity set.
+
 ### Customizing Evidence Generation
 
-Modify `LabEngine._generate_evidence()` in `src/lab_engine/engine.py`:
+Evidence lives in each scenario template's `evidence` dict, keyed by
+category (`dns`, `icmp`, `tcp`, `tls`, `http`, `application`, `firewall`,
+`l2`, `performance`, `logs`). Learner queries are mapped to categories in
+`LabEngine._map_query_to_category()` (`QUERY_CATEGORY_KEYWORDS` in
+`src/lab_engine/engine.py`) — add keywords there if you introduce a new
+category:
 
 ```python
-def _generate_evidence(self, hyp: Hypothesis, query: str) -> Evidence:
-    """Generate realistic evidence based on investigation query."""
-    # Add your evidence patterns here
-    evidence_map = {
-        "YourProtocol": {
-            "description": "Your evidence description",
-            "category": "protocol_name",
-        },
-    }
+QUERY_CATEGORY_KEYWORDS = [
+    (("your", "keywords"), "your_category"),
+    ...
+]
 ```
+
+Categories without template evidence fall back to a baseline
+"no anomalies" observation, keeping wrong-area investigations consistent
+with the root cause.
 
 ### Enhancing the Scoring System
 
@@ -98,6 +115,12 @@ def _score_final_diagnosis(self, ...) -> LabScore:
 ```
 
 ## Testing
+
+Run the test suite:
+
+```bash
+python -m unittest discover -s tests
+```
 
 Run individual modules:
 
