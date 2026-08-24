@@ -13,12 +13,24 @@ from utils.ui import TerminalUI
 
 def main():
     """Main entry point for the lab simulator."""
+    # Avoid crashes on consoles with limited charsets (e.g. Windows cp1252)
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
     # Initialize UI
     ui = TerminalUI()
     ui.display_welcome()
 
+    # Wait for the learner to start the lab
+    difficulty = ui.prompt_for_difficulty()
+    while not ui.prompt_for_lab_command():
+        ui.display_info("Command not recognized. The lab begins when you type START LAB.")
+
     # Generate scenario
-    scenario = ScenarioGenerator.generate_scenario()
+    scenario = ScenarioGenerator.generate_scenario(difficulty=difficulty)
     engine = LabEngine(scenario)
 
     # Display scenario and objective
@@ -146,8 +158,9 @@ Determine why the issue is occurring and identify the network component or proto
     official_rca = {
         "root_cause": result["official_root_cause"],
         "fault_domain": result["official_fault_domain"],
-        "evidence": "Based on packet capture analysis",
-        "remediation": "Refer to incident documentation",
+        "evidence": result["official_evidence"],
+        "remediation": result["official_remediation"],
+        "failure_chain": result["official_failure_chain"],
     }
     ui.display_official_rca(official_rca)
 
