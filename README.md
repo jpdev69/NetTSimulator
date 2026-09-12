@@ -1,4 +1,4 @@
-# NetTSimulator - Network Troubleshooting Training Lab Simulator
+# NetTSimulator - Network Troubleshooting Training Lab
 
 A terminal-based, interactive lab simulator for learning hypothesis-driven network troubleshooting using Wireshark methodologies.
 
