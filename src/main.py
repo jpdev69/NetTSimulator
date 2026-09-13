@@ -90,7 +90,10 @@ Determine why the issue is occurring and identify the network component or proto
 
     # Phase 3: Interactive Investigation
     ui.console.print("\n[bold cyan]PHASE 3: Interactive Investigation[/bold cyan]\n")
-    ui.display_info("You will now investigate hypotheses one by one.")
+    ui.display_info(
+        "Investigate each hypothesis in priority order. Gather as much "
+        "evidence as you need, then CONCLUDE - or SKIP the hypothesis."
+    )
 
     for hyp in sorted(engine.session.hypotheses, key=lambda h: h.priority):
         ui.console.print(
@@ -99,16 +102,37 @@ Determine why the issue is occurring and identify the network component or proto
 
         while True:
             query = ui.prompt_for_investigation()
+            command = query.strip().upper()
 
-            if query.upper() == "HELP":
-                hint_level = int(
-                    ui.console.input("[yellow]Hint level (1-4):[/yellow] ")
+            if not command:
+                ui.display_info(
+                    "Enter an investigation query, or one of: "
+                    "HELP, STATUS, CONCLUDE, SKIP."
                 )
+                continue
+
+            if command == "HELP":
+                hint_level = ui.prompt_for_hint_level()
                 hint = engine.get_hint(hint_level)
                 ui.display_hint(hint)
                 continue
 
-            elif query.upper() == "SKIP":
+            if command == "STATUS":
+                ui.display_investigation_status(engine.get_investigation_status())
+                continue
+
+            if command == "SKIP":
+                engine.skip_hypothesis(hyp.id)
+                break
+
+            if command == "CONCLUDE":
+                conclusion = ui.prompt_for_hypothesis_evaluation()
+                eval_result = engine.evaluate_hypothesis(hyp.id, conclusion)
+                ui.display_success(
+                    f"Hypothesis marked as: {eval_result['recorded_status']}"
+                )
+                if conclusion == "INCONCLUSIVE":
+                    continue
                 break
 
             # Conduct investigation
@@ -124,16 +148,6 @@ Determine why the issue is occurring and identify the network component or proto
                     "description": evidence.description,
                 }
             )
-
-            # Evaluate hypothesis
-            conclusion = ui.prompt_for_hypothesis_evaluation()
-            eval_result = engine.evaluate_hypothesis(hyp.id, conclusion)
-            ui.display_success(
-                f"Hypothesis marked as: {eval_result['recorded_status']}"
-            )
-
-            if conclusion != "INCONCLUSIVE":
-                break
 
     # Phase 4: Final Diagnosis
     ui.console.print("\n[bold cyan]PHASE 4: Final Diagnosis[/bold cyan]\n")
