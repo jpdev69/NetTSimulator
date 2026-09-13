@@ -13,6 +13,7 @@ class HypothesisStatus(str, Enum):
     REJECTED = "REJECTED"
     CONFIRMED = "CONFIRMED"
     INCONCLUSIVE = "INCONCLUSIVE"
+    SKIPPED = "SKIPPED"
 
 
 @dataclass
@@ -64,6 +65,7 @@ class IncidentScenario:
     remediation: str = ""
     failure_chain: str = ""
     fault_keywords: List[str] = field(default_factory=list)
+    hints: List[str] = field(default_factory=list)
 
 
 @dataclass

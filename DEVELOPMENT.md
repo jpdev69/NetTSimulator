@@ -40,9 +40,9 @@ Generator Layer (ScenarioGenerator)
 3. **Hypothesis Collection** → UI collects and engine registers learner's hypotheses
 4. **Prioritization** → Learner ranks hypotheses; engine stores priorities
 5. **Investigation Loop** → For each hypothesis:
-   - Learner requests evidence via UI
+   - Learner requests evidence via UI (STATUS/HELP available at any time)
    - Engine generates evidence consistent with root cause
-   - Learner evaluates hypothesis
+   - Learner CONCLUDEs the hypothesis (CONFIRM/REJECT/INCONCLUSIVE) or SKIPs it
    - Engine records status and moves to next
 6. **Final Diagnosis** → Learner submits RCA; engine scores and compares
 
@@ -61,7 +61,7 @@ SCENARIO_TEMPLATES = [
         "environment": "Production - Your Location",
         "symptom": "User-reported issue",
         "impact": "Business impact",
-        "difficulty": "beginner|intermediate|advanced",
+        "difficulty": "beginner|intermediate|advanced|expert",
         "root_cause": "The actual cause",
         "fault_domain": "Layer/Component",
         "protocols": ["PROTOCOL1", "PROTOCOL2"],
@@ -71,15 +71,17 @@ SCENARIO_TEMPLATES = [
         "fault_keywords": ["..."],        # words that mark a hypothesis as the true fault
         "remediation": "...",
         "failure_chain": "...",
+        "hints": ["...", "...", "...", "..."],  # Socratic → domain → filter ladder
         "evidence": {"dns": "...", "tcp": "...", ...},  # per-category ground truth
     },
 ]
 ```
 
 Host identities (client/server names and IPs, DNS resolver, firewall IP) and the
-incident time are randomized per lab. Use placeholders (`{client_ip}`, `{server_ip}`,
-`{server_name}`, `{dns_server}`, `{firewall_ip}`, `{app_port}`) in `root_cause`,
-`remediation`, `failure_chain`, `fault_keywords` and `evidence` strings so they stay
+incident time are randomized per lab. Use placeholders (`{client_ip}`, `{client_subnet}`,
+`{server_ip}`, `{server_name}`, `{server_mac}`, `{dns_server}`, `{firewall_ip}`,
+`{backend_ip}`, `{rogue_mac}`, `{app_port}`) in `root_cause`, `remediation`,
+`failure_chain`, `fault_keywords`, `hints` and `evidence` strings so they stay
 consistent with the generated identity set.
 
 ### Customizing Evidence Generation

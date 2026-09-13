@@ -4,7 +4,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.markdown import Markdown
-from rich.prompt import Prompt, Confirm
+from rich.prompt import Prompt, Confirm, IntPrompt
 from rich.text import Text
 
 MIN_HYPOTHESES = 2
@@ -36,7 +36,7 @@ class TerminalUI:
         """
         difficulty = Prompt.ask(
             "Select difficulty",
-            choices=["beginner", "intermediate", "advanced", "random"],
+            choices=["beginner", "intermediate", "advanced", "expert", "random"],
             default="random",
         )
         return None if difficulty == "random" else difficulty
@@ -157,6 +157,8 @@ class TerminalUI:
     def prompt_for_prioritization(self, hypothesis_count: int) -> dict:
         """Prompt user to prioritize hypotheses.
 
+        Priorities must be distinct whole numbers (1 = highest priority).
+
         Args:
             hypothesis_count: Number of hypotheses to prioritize
 
@@ -168,7 +170,7 @@ class TerminalUI:
         )
         self.console.print(
             "For each hypothesis, provide:\n"
-            "  - Priority number (1 = highest priority)\n"
+            "  - Priority number (1 = highest priority; each number may be used once)\n"
             "  - Reason for priority\n"
             "  - Expected evidence if true\n"
             "  - Evidence that would falsify it\n"
@@ -183,7 +185,16 @@ class TerminalUI:
 
         for i in range(hypothesis_count):
             self.console.print(f"\n[yellow]Hypothesis {i + 1}:[/yellow]")
-            priorities.append(int(Prompt.ask("  Priority")))
+            while True:
+                priority = IntPrompt.ask("  Priority", default=i + 1)
+                if priority in priorities:
+                    self.console.print(
+                        f"[red]Priority {priority} is already used. "
+                        "Each priority number must be unique.[/red]"
+                    )
+                    continue
+                priorities.append(priority)
+                break
             reasons.append(Prompt.ask("  Reason for priority"))
             expected.append(Prompt.ask("  Expected evidence"))
             falsifying.append(Prompt.ask("  Falsifying evidence"))
@@ -221,13 +232,23 @@ class TerminalUI:
         """Prompt user for investigation action.
 
         Returns:
-            Investigation query
+            Investigation query or command (HELP, STATUS, CONCLUDE, SKIP)
         """
         self.console.print("\n[bold cyan]Conduct Investigation[/bold cyan]\n")
         query = Prompt.ask(
-            "What would you like to investigate? (or [bold]HELP[/bold] for hints)"
+            "What would you like to investigate? "
+            "([bold]HELP[/bold] hints, [bold]STATUS[/bold] status, "
+            "[bold]CONCLUDE[/bold] conclude, [bold]SKIP[/bold] skip)"
         )
         return query
+
+    def prompt_for_hint_level(self) -> int:
+        """Prompt for the desired hint level.
+
+        Returns:
+            Hint level between 1 and 4
+        """
+        return IntPrompt.ask("Hint level (1-4)", choices=[1, 2, 3, 4], default=1)
 
     def display_evidence(self, evidence: dict) -> None:
         """Display evidence from investigation."""
